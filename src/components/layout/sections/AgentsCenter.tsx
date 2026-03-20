@@ -1,29 +1,57 @@
 "use client";
 
+import { useEffect, useState } from 'react';
 import { 
   Users, 
   Circle, 
   Clock, 
   ChevronDown, 
-  Sliders 
+  Sliders,
+  RefreshCw
 } from 'lucide-react';
-import { useState } from 'react';
+import { supabase } from '@/lib/supabase';
 import { Agent } from '@/types';
 
 export default function AgentsCenter() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'online' | 'offline' | 'busy'>('all');
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Mock agent data - in a real app, this would come from a backend
-  const agents: Agent[] = [
-    { id: 'chief-agent', name: 'Chief Agent', model: 'gpt-5.4', role: 'Chief Agent', availability: 'online', currentTask: undefined },
-    { id: 'coding-lead', name: 'Coding Lead', model: 'sonnet', role: 'Coding Lead', availability: 'online', currentTask: undefined },
-    { id: 'research-lead', name: 'Research Lead', model: 'gemini-pro', role: 'Research Lead', availability: 'online', currentTask: undefined },
-    { id: 'fast-worker', name: 'Fast Worker', model: 'gemini-flash', role: 'Fast Worker', availability: 'online', currentTask: undefined },
-    { id: 'brainstormer', name: 'Brainstormer', model: 'qwen', role: 'Brainstormer', availability: 'online', currentTask: undefined },
-    { id: 'finance-lead', name: 'Finance Lead', model: 'minimax', role: 'Finance Lead', availability: 'online', currentTask: undefined },
-    { id: 'generalist', name: 'Generalist', model: 'minimax', role: 'Generalist', availability: 'online', currentTask: undefined },
-  ];
+  const fetchAgents = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { data, error: fetchError } = await supabase
+        .from('agents')
+        .select('*')
+        .order('name');
+
+      if (fetchError) throw fetchError;
+      
+      // Map to our Agent type
+      const mappedAgents: Agent[] = (data || []).map(agent => ({
+        id: agent.id,
+        name: agent.name,
+        model: agent.model,
+        role: agent.role,
+        availability: agent.availability as 'online' | 'offline' | 'busy',
+        currentTask: agent.current_task || undefined
+      }));
+      
+      setAgents(mappedAgents);
+    } catch (err: any) {
+      console.error('Error fetching agents:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAgents();
+  }, []);
 
   const filteredAgents = agents.filter(agent => {
     const matchesSearch = 
@@ -42,34 +70,44 @@ export default function AgentsCenter() {
     <div className="space-y-6">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold text-gray-800">Agents</h1>
-        <div className="flex items-center space-x-3">
-          <input
-            type="text"
-            placeholder="Search agents..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 w-48"
-          />
-          <div className="relative">
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value as any)}
-              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">All Status</option>
-              <option value="online">Online</option>
-              <option value="offline">Offline</option>
-              <option value="busy">Busy</option>
-            </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-          </div>
+        <button
+          onClick={fetchAgents}
+          className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg"
+          title="Refresh agents"
+        >
+          <RefreshCw className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} />
+        </button>
+      </div>
+
+      <div className="flex items-center space-x-3 mb-4">
+        <input
+          type="text"
+          placeholder="Search agents..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 w-48"
+        />
+        <div className="relative">
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value as any)}
+            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="all">All Status</option>
+            <option value="online">Online</option>
+            <option value="offline">Offline</option>
+            <option value="busy">Busy</option>
+          </select>
+          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
         </div>
       </div>
 
-      {filteredAgents.length === 0 ? (
-        <div className="text-center py-8 text-gray-500">
-          No agents found
-        </div>
+      {loading ? (
+        <div className="text-center py-8 text-gray-500">Loading agents...</div>
+      ) : error ? (
+        <div className="text-center py-8 text-red-500">Error: {error}</div>
+      ) : filteredAgents.length === 0 ? (
+        <div className="text-center py-8 text-gray-500">No agents found</div>
       ) : (
         <div className="space-y-4">
           {filteredAgents.map((agent) => (

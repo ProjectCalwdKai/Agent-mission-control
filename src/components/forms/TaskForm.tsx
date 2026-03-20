@@ -11,8 +11,9 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { TaskCategory, Priority, Mode, AGENT_ROSTER, getSuggestedAgentForCategory } from '@/types';
+import { supabase } from '@/lib/supabase';
 
-export default function TaskForm() {
+export default function TaskForm({ onTaskCreated }: { onTaskCreated?: () => void } = {}) {
   const [prompt, setPrompt] = useState('');
   const [details, setDetails] = useState('');
   const [category, setCategory] = useState<TaskCategory>('Marketing');
@@ -22,6 +23,7 @@ export default function TaskForm() {
   const [autoRoute, setAutoRoute] = useState(true);
   const [mode, setMode] = useState<Mode>('Balanced');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Suggested agent based on category (if autoRoute is on and no preferred agent set)
   const suggestedAgent = autoRoute && !preferredAgent 
@@ -31,11 +33,35 @@ export default function TaskForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    // Here we would call an API to create the task
-    // For now, we just simulate and reset
+    setError(null);
+    
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Determine the assigned agent
+      let assignedAgentId = preferredAgent;
+      if (autoRoute && !preferredAgent && suggestedAgent) {
+        assignedAgentId = suggestedAgent.id;
+      }
+
+      // Insert task into Supabase
+      const { data, error: insertError } = await supabase
+        .from('tasks')
+        .insert({
+          title: prompt.substring(0, 100), // Use first 100 chars as title
+          prompt: prompt,
+          details: details || null,
+          category: category,
+          priority: priority,
+          status: 'Inbox',
+          assigned_agent_id: assignedAgentId || null,
+          requires_approval: false,
+          has_delegation: false,
+          due_date: dueDate || null
+        })
+        .select()
+        .single();
+
+      if (insertError) throw insertError;
+
       // Reset form
       setPrompt('');
       setDetails('');
@@ -45,10 +71,16 @@ export default function TaskForm() {
       setPreferredAgent('');
       setAutoRoute(true);
       setMode('Balanced');
-      // In a real app, we would show a success toast or update the task list
-      console.log('Task submitted');
-    } catch (error) {
-      console.error('Failed to submit task', error);
+
+      // Notify parent to refresh
+      if (onTaskCreated) {
+        onTaskCreated();
+      }
+      
+      console.log('Task created:', data);
+    } catch (err: any) {
+      console.error('Failed to submit task', err);
+      setError(err.message || 'Failed to create task');
     } finally {
       setLoading(false);
     }
@@ -57,6 +89,13 @@ export default function TaskForm() {
   return (
     <div className="bg-white rounded-lg shadow-md p-6">
       <h2 className="text-lg font-semibold mb-4">New Task</h2>
+      
+      {error && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-md">
+          {error}
+        </div>
+      )}
+      
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Task Prompt</label>
@@ -156,7 +195,7 @@ export default function TaskForm() {
                 onChange={(e) => setAutoRoute(e.target.checked)}
                 className="h-4 w-4 text-blue-600"
               />
-              <span>Auto-route to best agent</span>
+              <span>Auto-route</span>
             </label>
           </div>
         </div>
