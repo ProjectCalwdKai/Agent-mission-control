@@ -11,6 +11,7 @@ import {
   Activity, 
   GitBranch, 
   Building2, 
+  MessageSquare,
   ChevronDown 
 } from 'lucide-react';
 import { useState } from 'react';
@@ -25,6 +26,7 @@ export default function Sidebar({ className = '' }: { className?: string }) {
 
   const navItems = [
     { href: '/', label: 'Overview', icon: Home },
+    { href: '/threads', label: 'Threads', icon: MessageSquare },
     { href: '/tasks', label: 'Tasks', icon: List },
     { href: '/agents', label: 'Agents', icon: Users },
     { href: '/approvals', label: 'Approvals', icon: Check },
