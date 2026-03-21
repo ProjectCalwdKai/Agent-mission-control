@@ -4,17 +4,14 @@ import { useState, useEffect } from 'react';
 import TaskCard from './TaskCard';
 import { Task, TaskCategory, Priority } from '@/types';
 import { supabase } from '@/lib/supabase';
+import { useAutoRefresh, formatLastUpdated } from '@/hooks/useAutoRefresh';
+import { RefreshCw, AlertCircle } from 'lucide-react';
 
 export default function KanbanBoard() {
-  const [tasks, setTasks] = useState<Task[]>([]);
   const [filteredTasks, setFilteredTasks] = useState<Task[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  const fetchTasks = async () => {
-    setLoading(true);
-    setError(null);
+  const fetchTasks = async (): Promise<Task[]> => {
     try {
       const { data, error: fetchError } = await supabase
         .from('tasks')
@@ -40,19 +37,27 @@ export default function KanbanBoard() {
         updatedAt: task.updated_at
       }));
       
-      setTasks(mappedTasks);
-      setFilteredTasks(mappedTasks);
+      return mappedTasks;
     } catch (err: any) {
       console.error('Error fetching tasks:', err);
-      setError(err.message);
-    } finally {
-      setLoading(false);
+      throw err;
     }
   };
 
-  useEffect(() => {
-    fetchTasks();
-  }, []);
+  const {
+    data: tasks = [],
+    loading,
+    error,
+    refresh,
+    refreshing,
+    lastUpdatedAgo,
+    connectionLost,
+    resetConnection,
+  } = useAutoRefresh<Task[]>({
+    fetchFn: fetchTasks,
+    interval: 5000,
+    initialData: [],
+  });
 
   // Filter tasks when search query changes
   useEffect(() => {
@@ -107,7 +112,7 @@ export default function KanbanBoard() {
       if (insertError) throw insertError;
 
       // Refresh tasks after adding
-      await fetchTasks();
+      await refresh();
       
       return data;
     } catch (err) {
@@ -138,11 +143,8 @@ export default function KanbanBoard() {
 
       if (updateError) throw updateError;
 
-      // Update local state
-      setTasks(prev => prev.map(task => task.id === updatedTask.id ? {
-        ...updatedTask,
-        updatedAt: new Date().toISOString()
-      } : task));
+      // Trigger a refresh to get the updated data
+      await refresh();
     } catch (err) {
       console.error('Error updating task:', err);
     }
@@ -158,8 +160,8 @@ export default function KanbanBoard() {
 
       if (deleteError) throw deleteError;
 
-      // Update local state
-      setTasks(prev => prev.filter(task => task.id !== id));
+      // Refresh to get updated list
+      await refresh();
     } catch (err) {
       console.error('Error deleting task:', err);
     }
@@ -178,6 +180,13 @@ export default function KanbanBoard() {
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-semibold text-gray-800">Task Board</h2>
         <div className="flex items-center space-x-3">
+          <span className="text-xs text-gray-500">
+            {connectionLost ? (
+              <span className="text-red-600 font-medium">Connection lost</span>
+            ) : (
+              `Updated ${formatLastUpdated(lastUpdatedAgo)}`
+            )}
+          </span>
           <input
             type="text"
             placeholder="Search tasks..."
@@ -185,19 +194,46 @@ export default function KanbanBoard() {
             onChange={(e) => setSearchQuery(e.target.value)}
             className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 w-48"
           />
-          <button
-            onClick={fetchTasks}
-            className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
-          >
-            Refresh
-          </button>
+          {connectionLost ? (
+            <button
+              onClick={resetConnection}
+              className="px-4 py-2 bg-red-100 text-red-700 rounded-md hover:bg-red-200"
+            >
+              Reconnect
+            </button>
+          ) : (
+            <button
+              onClick={refresh}
+              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 flex items-center space-x-2"
+              disabled={refreshing}
+            >
+              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+              <span>Refresh</span>
+            </button>
+          )}
         </div>
       </div>
 
-      {loading ? (
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="flex items-center space-x-2">
+            <AlertCircle className="h-5 w-5 text-red-600" />
+            <p className="text-red-700">Error: {error.message}</p>
+          </div>
+        </div>
+      )}
+
+      {connectionLost && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <div className="flex items-center space-x-2">
+            <AlertCircle className="h-5 w-5 text-yellow-600" />
+            <p className="text-yellow-700">Connection lost. Attempting to reconnect...</p>
+          </div>
+        </div>
+      )}
+
+      {loading && !tasks.length ? (
         <div className="text-center py-8 text-gray-500">Loading tasks...</div>
-      ) : error ? (
-        <div className="text-center py-8 text-red-500">Error: {error}</div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           {columns.map((column) => (

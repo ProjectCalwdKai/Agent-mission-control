@@ -1,27 +1,24 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { 
   Users, 
   Circle, 
   Clock, 
   ChevronDown, 
   Sliders,
-  RefreshCw
+  RefreshCw,
+  AlertCircle
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { Agent } from '@/types';
+import { useAutoRefresh, formatLastUpdated } from '@/hooks/useAutoRefresh';
 
 export default function AgentsCenter() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'online' | 'offline' | 'busy'>('all');
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  const fetchAgents = async () => {
-    setLoading(true);
-    setError(null);
+  const fetchAgents = async (): Promise<Agent[]> => {
     try {
       const { data, error: fetchError } = await supabase
         .from('agents')
@@ -40,18 +37,27 @@ export default function AgentsCenter() {
         currentTask: agent.current_task || undefined
       }));
       
-      setAgents(mappedAgents);
+      return mappedAgents;
     } catch (err: any) {
       console.error('Error fetching agents:', err);
-      setError(err.message);
-    } finally {
-      setLoading(false);
+      throw err;
     }
   };
 
-  useEffect(() => {
-    fetchAgents();
-  }, []);
+  const {
+    data: agents = [],
+    loading,
+    error,
+    refresh,
+    refreshing,
+    lastUpdatedAgo,
+    connectionLost,
+    resetConnection,
+  } = useAutoRefresh<Agent[]>({
+    fetchFn: fetchAgents,
+    interval: 5000,
+    initialData: [],
+  });
 
   const filteredAgents = agents.filter(agent => {
     const matchesSearch = 
@@ -70,14 +76,52 @@ export default function AgentsCenter() {
     <div className="space-y-6">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold text-gray-800">Agents</h1>
-        <button
-          onClick={fetchAgents}
-          className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg"
-          title="Refresh agents"
-        >
-          <RefreshCw className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} />
-        </button>
+        <div className="flex items-center space-x-2">
+          <span className="text-xs text-gray-500">
+            {connectionLost ? (
+              <span className="text-red-600 font-medium">Connection lost</span>
+            ) : (
+              `Updated ${formatLastUpdated(lastUpdatedAgo)}`
+            )}
+          </span>
+          {connectionLost ? (
+            <button
+              onClick={resetConnection}
+              className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg"
+              title="Reconnect"
+            >
+              <RefreshCw className="h-5 w-5" />
+            </button>
+          ) : (
+            <button
+              onClick={refresh}
+              className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg"
+              title="Refresh agents"
+              disabled={refreshing}
+            >
+              <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
+            </button>
+          )}
+        </div>
       </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="flex items-center space-x-2">
+            <AlertCircle className="h-5 w-5 text-red-600" />
+            <p className="text-red-700">Error: {error.message}</p>
+          </div>
+        </div>
+      )}
+
+      {connectionLost && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <div className="flex items-center space-x-2">
+            <AlertCircle className="h-5 w-5 text-yellow-600" />
+            <p className="text-yellow-700">Connection lost. Attempting to reconnect...</p>
+          </div>
+        </div>
+      )}
 
       <div className="flex items-center space-x-3 mb-4">
         <input
@@ -102,10 +146,8 @@ export default function AgentsCenter() {
         </div>
       </div>
 
-      {loading ? (
+      {loading && !agents.length ? (
         <div className="text-center py-8 text-gray-500">Loading agents...</div>
-      ) : error ? (
-        <div className="text-center py-8 text-red-500">Error: {error}</div>
       ) : filteredAgents.length === 0 ? (
         <div className="text-center py-8 text-gray-500">No agents found</div>
       ) : (

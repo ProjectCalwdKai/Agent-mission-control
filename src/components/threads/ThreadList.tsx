@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from 'react';
-import { MessageSquare, Clock, Users, ArrowRight, RefreshCw, AlertCircle } from 'lucide-react';
+import { useState } from 'react';
+import { MessageSquare, Clock, Users, ArrowRight, RefreshCw, AlertCircle, MessageSquarePlus, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import type { Database } from '@/lib/supabase';
 import AgentSwitcher from '@/components/agents/AgentSwitcher';
+import { useAutoRefresh, formatLastUpdated } from '@/hooks/useAutoRefresh';
 
 type ConversationThread = Database['public']['Tables']['conversation_threads']['Row'];
 type SessionChain = Database['public']['Tables']['session_chain']['Row'];
@@ -14,16 +15,14 @@ interface ThreadWithHistory extends ConversationThread {
 }
 
 export default function ThreadList() {
-  const [threads, setThreads] = useState<ThreadWithHistory[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [selectedThread, setSelectedThread] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
+  const [isNewThreadModalOpen, setIsNewThreadModalOpen] = useState(false);
+  const [newThreadTitle, setNewThreadTitle] = useState('');
+  const [newThreadModel, setNewThreadModel] = useState('openrouter/qwen/qwen3.5-plus-02-15');
+  const [isCreatingThread, setIsCreatingThread] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
-  const fetchThreads = async () => {
-    setRefreshing(true);
-    setError(null);
-    
+  const fetchThreads = async (): Promise<ThreadWithHistory[]> => {
     try {
       const { data, error: fetchError } = await supabase
         .from('conversation_threads')
@@ -49,58 +48,69 @@ export default function ThreadList() {
         })
       );
 
-      setThreads(threadsWithHistory);
+      return threadsWithHistory;
     } catch (err: any) {
       console.error('Error fetching threads:', err);
-      setError(err.message);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+      throw err;
     }
   };
 
-  useEffect(() => {
-    fetchThreads();
-  }, []);
+  const {
+    data: threads = [],
+    loading,
+    error,
+    refresh,
+    refreshing,
+    lastUpdatedAgo,
+    connectionLost,
+    resetConnection,
+  } = useAutoRefresh({
+    fetchFn: fetchThreads,
+    interval: 5000,
+  });
 
   const handleSwitchComplete = () => {
-    // Refresh the thread list after a successful switch
-    fetchThreads();
+    refresh();
     setSelectedThread(null);
   };
 
-  if (loading) {
+  const handleCreateThread = async () => {
+    setIsCreatingThread(true);
+    setCreateError(null);
+
+    try {
+      const response = await fetch('/api/threads/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: newThreadTitle,
+          model: newThreadModel,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create new thread');
+      }
+
+      const result = await response.json();
+      setIsNewThreadModalOpen(false);
+      setNewThreadTitle('');
+      setNewThreadModel('openrouter/qwen/qwen3.5-plus-02-15');
+      refresh();
+    } catch (err: any) {
+      console.error('Error creating thread:', err);
+      setCreateError(err.message);
+    } finally {
+      setIsCreatingThread(false);
+    }
+  };
+
+  if (loading && !threads.length) {
     return (
       <div className="flex items-center justify-center py-12">
         <RefreshCw className="h-8 w-8 animate-spin text-gray-400" />
         <span className="ml-3 text-gray-500">Loading threads...</span>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <div className="flex items-center space-x-2">
-          <AlertCircle className="h-5 w-5 text-red-600" />
-          <p className="text-red-700">Error loading threads: {error}</p>
-        </div>
-        <button
-          onClick={fetchThreads}
-          className="mt-3 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm"
-        >
-          Try Again
-        </button>
-      </div>
-    );
-  }
-
-  if (threads.length === 0) {
-    return (
-      <div className="text-center py-12">
-        <MessageSquare className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-        <h3 className="text-lg font-medium text-gray-900">No threads yet</h3>
-        <p className="text-gray-500 mt-1">Create a new conversation to get started</p>
       </div>
     );
   }
@@ -111,14 +121,129 @@ export default function ThreadList() {
         <h2 className="text-lg font-semibold text-gray-900">
           Conversation Threads ({threads.length})
         </h2>
-        <button
-          onClick={fetchThreads}
-          className="flex items-center space-x-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg"
-        >
-          <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-          <span>Refresh</span>
-        </button>
+        <div className="flex items-center space-x-2">
+          <span className={`text-xs ${connectionLost ? 'text-red-600 font-medium' : 'text-gray-500'}`}>
+            {connectionLost ? 'Connection lost' : `Updated ${formatLastUpdated(lastUpdatedAgo)}`}
+          </span>
+          <button
+            onClick={() => setIsNewThreadModalOpen(true)}
+            className="flex items-center space-x-2 px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            <MessageSquarePlus className="h-4 w-4" />
+            <span>New Thread</span>
+          </button>
+          {connectionLost ? (
+            <button
+              onClick={resetConnection}
+              className="flex items-center space-x-2 px-3 py-2 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg"
+            >
+              <RefreshCw className="h-4 w-4" />
+              <span>Reconnect</span>
+            </button>
+          ) : (
+            <button
+              onClick={refresh}
+              className="flex items-center space-x-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg"
+              disabled={refreshing}
+            >
+              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+              <span>Refresh</span>
+            </button>
+          )}
+        </div>
       </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="flex items-center space-x-2">
+            <AlertCircle className="h-5 w-5 text-red-600" />
+            <p className="text-red-700">Error loading threads: {error.message}</p>
+          </div>
+        </div>
+      )}
+
+      {connectionLost && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <div className="flex items-center space-x-2">
+            <AlertCircle className="h-5 w-5 text-yellow-600" />
+            <p className="text-yellow-700">Connection lost. Attempting to reconnect...</p>
+          </div>
+        </div>
+      )}
+
+      {threads.length === 0 && !loading && (
+        <div className="text-center py-12">
+          <MessageSquare className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900">No threads yet</h3>
+          <p className="text-gray-500 mt-1">Create a new conversation to get started</p>
+        </div>
+      )}
+
+      {/* New Thread Modal */}
+      {isNewThreadModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Create New Conversation Thread</h3>
+              <button
+                onClick={() => setIsNewThreadModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">
+              Start a new conversation with a specific agent model.
+            </p>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Title
+                </label>
+                <input
+                  type="text"
+                  value={newThreadTitle}
+                  onChange={(e) => setNewThreadTitle(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="e.g., Debugging Supabase auth"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Model
+                </label>
+                <select
+                  value={newThreadModel}
+                  onChange={(e) => setNewThreadModel(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="openrouter/qwen/qwen3.5-plus-02-15">Default (Qwen 3.5)</option>
+                  <option value="openrouter/google/gemini-pro">Gemini Pro</option>
+                  <option value="anthropic/claude-3-opus">Claude 3 Opus</option>
+                </select>
+              </div>
+              {createError && (
+                <p className="text-red-500 text-sm">{createError}</p>
+              )}
+            </div>
+            <div className="flex justify-end space-x-3 mt-6">
+              <button
+                onClick={() => setIsNewThreadModalOpen(false)}
+                className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateThread}
+                disabled={isCreatingThread || !newThreadTitle.trim()}
+                className="px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+              >
+                {isCreatingThread ? 'Creating...' : 'Create Thread'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="space-y-3">
         {threads.map((thread) => (
