@@ -171,6 +171,76 @@ export type Database = {
           created_at?: string;
         };
       };
+      conversation_threads: {
+        Row: {
+          id: string;
+          title: string;
+          user_id: string | null;
+          current_session_key: string | null;
+          current_model: string;
+          session_count: number;
+          status: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          title: string;
+          user_id?: string | null;
+          current_session_key?: string | null;
+          current_model?: string;
+          session_count?: number;
+          status?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          title?: string;
+          user_id?: string | null;
+          current_session_key?: string | null;
+          current_model?: string;
+          session_count?: number;
+          status?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      session_chain: {
+        Row: {
+          id: string;
+          thread_id: string;
+          session_key: string;
+          model: string;
+          reason: string | null;
+          context_snapshot: string | null;
+          start_tokens: number;
+          end_tokens: number | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          thread_id: string;
+          session_key: string;
+          model: string;
+          reason?: string | null;
+          context_snapshot?: string | null;
+          start_tokens?: number;
+          end_tokens?: number | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          thread_id?: string;
+          session_key?: string;
+          model?: string;
+          reason?: string | null;
+          context_snapshot?: string | null;
+          start_tokens?: number;
+          end_tokens?: number | null;
+          created_at?: string;
+        };
+      };
     };
   };
 };
