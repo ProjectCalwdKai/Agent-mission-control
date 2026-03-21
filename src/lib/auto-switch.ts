@@ -169,9 +169,9 @@ export async function monitorAndAutoSwitch(config: Partial<AutoSwitchConfig> = {
 /**
  * Start continuous monitoring (runs every checkInterval)
  */
-export function startAutoSwitchMonitor(
+export async function startAutoSwitchMonitor(
   config: Partial<AutoSwitchConfig> = {},
-  onRun?: (result: ReturnType<typeof monitorAndAutoSwitch>) => void
+  onRun?: (result: Awaited<ReturnType<typeof monitorAndAutoSwitch>>) => void
 ): { stop: () => void } {
   const fullConfig = { ...DEFAULT_CONFIG, ...config };
   
