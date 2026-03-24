@@ -2,31 +2,49 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { 
-  Home, 
-  List, 
-  Users, 
-  Check, 
-  Folder, 
-  Activity, 
-  GitBranch, 
-  Building2, 
+import {
+  Home,
+  List,
+  Users,
+  Check,
+  Folder,
+  Activity,
+  GitBranch,
+  Building2,
   MessageSquare,
-  ChevronDown 
+  ChevronDown,
+  PlusCircle,
+  MessageSquareDashed
 } from 'lucide-react';
 import { useState } from 'react';
+import { createThread } from '@/lib/data';
+import { useRouter } from 'next/navigation';
 
 export default function Sidebar({ className = '' }: { className?: string }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [categoriesOpen, setCategoriesOpen] = useState(false);
 
   const toggleFilters = () => setFiltersOpen(!filtersOpen);
   const toggleCategories = () => setCategoriesOpen(!categoriesOpen);
 
+  const handleNewThread = async () => {
+    const newThread = await createThread();
+    if (newThread?.id) {
+      router.push(`/threads/${newThread.id}`);
+    }
+  };
+
   const navItems = [
     { href: '/', label: 'Overview', icon: Home },
     { href: '/threads', label: 'Threads', icon: MessageSquare },
+    { 
+      onClick: handleNewThread, 
+      label: 'New Thread', 
+      icon: MessageSquareDashed,
+      isButton: true
+    },
     { href: '/tasks', label: 'Tasks', icon: List },
     { href: '/agents', label: 'Agents', icon: Users },
     { href: '/approvals', label: 'Approvals', icon: Check },
@@ -47,7 +65,16 @@ export default function Sidebar({ className = '' }: { className?: string }) {
         {navItems.map((item) => {
           const Icon = item.icon;
           const active = isActive(item.href);
-          return (
+          return item.isButton ? (
+            <button
+              key={item.label}
+              onClick={item.onClick}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all duration-200 w-full text-gray-700 hover:bg-gray-100 hover:text-gray-900`}
+            >
+              <Icon className={`h-4 w-4 flex-shrink-0 text-gray-500`} />
+              <span>{item.label}</span>
+            </button>
+          ) : (
             <Link
               key={item.href}
               href={item.href}
@@ -66,8 +93,8 @@ export default function Sidebar({ className = '' }: { className?: string }) {
 
       {/* Filters Section */}
       <div className="border-t border-gray-200 pt-4">
-        <button 
-          onClick={toggleFilters} 
+        <button
+          onClick={toggleFilters}
           className="w-full flex items-center justify-between px-3 py-2 text-left text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-md"
         >
           <span>Filters</span>
@@ -91,8 +118,8 @@ export default function Sidebar({ className = '' }: { className?: string }) {
         )}
 
         {/* Categories Section */}
-        <button 
-          onClick={toggleCategories} 
+        <button
+          onClick={toggleCategories}
           className="w-full flex items-center justify-between px-3 py-2 text-left text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-md mt-4"
         >
           <span>Task Categories</span>
@@ -100,14 +127,14 @@ export default function Sidebar({ className = '' }: { className?: string }) {
         </button>
         {categoriesOpen && (
           <div className="mt-2 space-y-1 px-4">
-            {[ 
-              'Marketing', 
-              'AI video generation', 
-              'Remotion videos', 
-              'Product research', 
-              'Accounting', 
-              'Coding', 
-              'Task automation' 
+            {[
+              'Marketing',
+              'AI video generation',
+              'Remotion videos',
+              'Product research',
+              'Accounting',
+              'Coding',
+              'Task automation'
             ].map((category) => (
               <label key={category} className="flex items-center gap-2 text-sm text-gray-700">
                 <input type="checkbox" className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
